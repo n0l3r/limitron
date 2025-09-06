@@ -122,11 +122,68 @@ tb, err := limitron.NewTokenBucketLimiter(cfg)
 allowed, _ := tb.Allow("user-id")
 ```
 
+---
+
+## Gin Middleware Example
+
+You can easily use limitron as a middleware in [Gin](https://github.com/gin-gonic/gin) web framework to protect your endpoints.
+
+```go
+import (
+    "net/http"
+    "github.com/gin-gonic/gin"
+    "github.com/n0l3r/limitron"
+)
+
+func RateLimitMiddleware(limiter limitron.Limiter) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        // Use c.ClientIP() or c.GetHeader("Authorization") or any unique key per user
+        key := c.ClientIP() 
+        allowed, err := limiter.Allow(key)
+        if err != nil {
+            c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+            return
+        }
+        if !allowed {
+            c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "rate limit exceeded"})
+            return
+        }
+        c.Next()
+    }
+}
+
+func main() {
+    cfg := limitron.Config{
+        Algorithm:  limitron.AlgorithmTokenBucket,
+        Rate:       5,
+        Capacity:   10,
+        StoreType:  limitron.StoreTypeMemory,
+    }
+    limiter, err := limitron.NewLimiter(cfg)
+    if err != nil {
+        panic(err)
+    }
+
+    r := gin.Default()
+    r.Use(RateLimitMiddleware(limiter))
+    r.GET("/hello", func(c *gin.Context) {
+        c.String(http.StatusOK, "Hello, World!")
+    })
+    r.Run(":8080")
+}
+```
+
+**Tips:**
+- Use `c.ClientIP()` for simple global rate limiting, or combine with other user identifiers for per-user rate limiting.
+- Customize the middleware as needed for your application.
+
+---
+
 ## API Overview
 
 ```go
 type Limiter interface {
-    Allow(key string) (bool, error)
+Allow(key string) (bool, error)
 }
 
 func NewLimiter(cfg Config) (Limiter, error)
@@ -140,13 +197,13 @@ func NewLeakyBucketLimiter(cfg Config) (Limiter, error)
 
 ```go
 const (
-    AlgorithmLeakyBucket   = "leaky_bucket"
-    AlgorithmTokenBucket   = "token_bucket"
-    AlgorithmFixedWindow   = "fixed_window"
-    AlgorithmSlidingWindow = "sliding_window"
+AlgorithmLeakyBucket   = "leaky_bucket"
+AlgorithmTokenBucket   = "token_bucket"
+AlgorithmFixedWindow   = "fixed_window"
+AlgorithmSlidingWindow = "sliding_window"
 
-    StoreTypeMemory = "memory"
-    StoreTypeRedis  = "redis"
+StoreTypeMemory = "memory"
+StoreTypeRedis  = "redis"
 )
 ```
 
